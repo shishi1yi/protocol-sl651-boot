@@ -1,0 +1,234 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration scan="true" scanPeriod="600 seconds">
+    <!-- 日志路径，生产环境，可以配置到具体的日志目录 -->
+    <property name="log.path" value="${log.dir:-logs}"/>
+    <property name="console.log.pattern"
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS} ${LOG_LEVEL_PATTERN:-%5p} ${PID:- } [%15.15t] %-40.40logger{39} : %m%n${LOG_EXCEPTION_CONVERSION_WORD:-%wEx}"/>
+
+    <property name="log.file.pattern" value="%d{yyyy-MM-dd}_%i.log"/>
+    <property name="log.maxFileSize" value="100MB" />
+    <property name="log.totalSizeCap" value="1GB" />
+    <property name="log.maxHistory" value="7" />
+    <property name="log.discardingThreshold" value="0" />
+    <property name="log.queueSize" value="256" />
+    <property name="log.charset" value="UTF-8" />
+
+    <define name="ip" class="com.fjwanfu.modules.protocol.sl651.config.LogBackIpConfig"/>
+
+    <!--读取spring配置的属性-->
+    <springProperty scope="context" name="rabbitmq_host" source="spring.rabbitmq.host"/>
+    <springProperty scope="context" name="rabbitmq_port" source="spring.rabbitmq.port"/>
+    <springProperty scope="context" name="rabbitmq_username" source="spring.rabbitmq.username"/>
+    <springProperty scope="context" name="rabbitmq_password" source="spring.rabbitmq.password"/>
+    <springProperty scope="context" name="rabbitmq_virtual_host" source="spring.rabbitmq.virtual-host"/>
+
+
+    <!-- 配置rabbitmq的信息-->
+    <property name="rabbitmqHost" value="${rabbitmq_host}"/>
+    <property name="rabbitmqPort" value="${rabbitmq_port:-5672}"/>
+    <property name="rabbitmqUsername" value="${rabbitmq_username}"/>
+    <property name="rabbitmqPassword" value="${rabbitmq_password}"/>
+    <property name="rabbitmqVirtualHost" value="${rabbitmq_virtual_host}"/>
+
+    <!-- 自定义参数监听 -->
+    <contextListener class="org.springblade.core.log.listener.LoggerStartupListener"/>
+    <springProperty scope="context" name="springAppName" source="spring.application.name"/>
+
+    <!-- 彩色日志依赖的渲染类 -->
+    <conversionRule conversionWord="clr" converterClass="org.springframework.boot.logging.logback.ColorConverter"/>
+    <conversionRule conversionWord="wex"
+                    converterClass="org.springframework.boot.logging.logback.WhitespaceThrowableProxyConverter"/>
+    <conversionRule conversionWord="wEx"
+                    converterClass="org.springframework.boot.logging.logback.ExtendedWhitespaceThrowableProxyConverter"/>
+    <!-- 彩色日志格式 -->
+    <property name="CONSOLE_LOG_PATTERN"
+              value="${CONSOLE_LOG_PATTERN:-%clr(%d{yyyy-MM-dd HH:mm:ss.SSS}){faint} %clr(${LOG_LEVEL_PATTERN:-%5p}) %clr(${PID:- }){magenta} %clr(---){faint} %clr([%15.15t]){faint} %clr(%-40.40logger{39}){cyan} %clr(:){faint} %m%n${LOG_EXCEPTION_CONVERSION_WORD:-%wEx}}"/>
+    <!-- 控制台输出 -->
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
+            <pattern>${CONSOLE_LOG_PATTERN}</pattern>
+            <charset>utf8</charset>
+        </encoder>
+    </appender>
+
+    <!-- DEBUG 系统日志输出 -->
+    <appender name="file_info" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${log.path}/${springAppName}/info.log</file>
+        <append>true</append>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${log.path}/${springAppName}/info.${log.file.pattern}</fileNamePattern>
+            <maxHistory>${log.maxHistory}</maxHistory>
+            <maxFileSize>${log.maxFileSize}</maxFileSize>
+            <totalSizeCap>${log.totalSizeCap}</totalSizeCap>
+        </rollingPolicy>
+        <encoder>
+            <pattern>${console.log.pattern}</pattern>
+            <charset>${log.charset}</charset>
+        </encoder>
+        <!--<filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            &lt;!&ndash; 过滤的级别 &ndash;&gt;
+            <level>DEBUG</level>
+        </filter>-->
+    </appender>
+
+    <appender name="LogAmqpAppender" class="org.springframework.amqp.rabbit.logback.AmqpAppender">
+        <encoder class="net.logstash.logback.encoder.LoggingEventCompositeJsonEncoder">
+            <jsonFactoryDecorator class="net.logstash.logback.decorate.CharacterEscapesJsonFactoryDecorator">
+                <escape>
+                    <targetCharacterCode>10</targetCharacterCode>
+                    <escapeSequence>\u2028</escapeSequence>
+                </escape>
+            </jsonFactoryDecorator>
+            <providers>
+                <pattern>
+                    <pattern>
+                        {
+                        "recordTime":"%d{yyyy-MM-dd HH:mm:ss.SSS}",
+                        "traceId":"%X{traceId}",
+                        "serviceIp": "${ip}",
+                        "logLevel": "%level",
+                        "serviceName": "${springAppName:-SpringApp}",
+                        "pid": "${PID:-}",
+                        "thread": "%thread",
+                        "classZ": "%logger{40}",
+                        "line":"%L",
+                        "message": "%message",
+                        "exception":"%ex{200}"
+                        }
+                    </pattern>
+                </pattern>
+            </providers>
+        </encoder>
+
+        <filter class="ch.qos.logback.core.filter.EvaluatorFilter">
+            <evaluator class="ch.qos.logback.classic.boolex.JaninoEventEvaluator">
+                <!--推送含有指定内容的日志 -->
+                <expression>
+                    return formattedMessage.contains("protocolFrameTargetCode") || formattedMessage.contains("protocolMessageTargetCode");
+                </expression>
+            </evaluator>
+            <onMatch>ACCEPT</onMatch>
+            <onMismatch>DENY</onMismatch>
+        </filter>
+        <!--rabbitmq地址 -->
+        <host>${rabbitmqHost}</host>
+        <port>${rabbitmqPort}</port>
+        <username>${rabbitmqUsername}</username>
+        <password>${rabbitmqPassword}</password>
+        <virtualHost>${rabbitmqVirtualHost}</virtualHost>
+        <exchangeType>fanout</exchangeType>
+        <exchangeName>protocol.sl651.rabbit.log</exchangeName>
+        <declareExchange>true</declareExchange>
+        <routingKeyPattern>info</routingKeyPattern>
+        <generateId>true</generateId>
+        <charset>UTF-8</charset>
+        <durable>true</durable>
+        <deliveryMode>NON_PERSISTENT</deliveryMode>
+        <autoDelete>false</autoDelete>
+
+    </appender>
+
+    <appender name="ASYNC-INFO" class="ch.qos.logback.classic.AsyncAppender">
+        <!--默认情况下，当blockingQueue的容量高于阈值时（80%），会丢弃ERROR以下级别的日志。如果不希望丢弃日志（既每次都全量保存），那可以设置为0-->
+        <discardingThreshold>${log.discardingThreshold}</discardingThreshold>
+        <!--默认情况下，队列的深度为256，不过该值首次建议设置大一些，后续根据自己业务的特点去调优。注意：该值会影响性能-->
+        <queueSize>${log.queueSize}</queueSize>
+        <!--添加需要异步输出appender，只能添加一个-->
+        <appender-ref ref="file_info"/>
+    </appender>
+
+
+    <if condition='property("ELK_MODE").toUpperCase().contains("TRUE")'>
+        <then>
+            <!-- 推送日志至elk -->
+            <appender name="STDOUT_LOGSTASH" class="net.logstash.logback.appender.LogstashTcpSocketAppender">
+                <destination>${DESTINATION}</destination>
+                <!-- 日志输出编码 -->
+                <encoder charset="UTF-8" class="net.logstash.logback.encoder.LoggingEventCompositeJsonEncoder">
+                    <providers>
+                        <timestamp>
+                            <timeZone>UTC</timeZone>
+                        </timestamp>
+                        <pattern>
+                            <pattern>
+                                {
+                                "traceId": "%X{traceId}",
+                                "requestId": "%X{requestId}",
+                                "accountId": "%X{accountId}",
+                                "tenantId": "%X{tenantId}",
+                                "logLevel": "%level",
+                                "serviceName": "${springAppName:-SpringApp}",
+                                "pid": "${PID:-}",
+                                "thread": "%thread",
+                                "class": "%logger{40}",
+                                "line":"%L",
+                                "message": "%message"
+                                }
+                            </pattern>
+                        </pattern>
+                        <mdc/>
+                        <stackTrace/>
+                    </providers>
+                </encoder>
+            </appender>
+        </then>
+    </if>
+
+    <!-- 日志输出级别 -->
+    <root level="debug">
+        <appender-ref ref="STDOUT"/>
+        <appender-ref ref="${STDOUT_APPENDER}"/>
+        <appender-ref ref="ASYNC-INFO"/>
+        <appender-ref ref="LogAmqpAppender"/>
+    </root>
+
+    <logger name="org.springblade" level="debug" />
+
+    <logger name="net.sf.ehcache" level="INFO" />
+    <logger name="druid.sql" level="INFO" />
+
+
+    <!-- MyBatis log configure -->
+    <logger name="com.apache.ibatis" level="INFO" />
+    <logger name="org.mybatis.spring" level="INFO" />
+    <logger name="java.sql.Connection" level="INFO" />
+    <logger name="java.sql.Statement" level="INFO" />
+    <logger name="java.sql.PreparedStatement" level="INFO" />
+
+    <!-- 减少部分debug日志 -->
+    <logger name="druid.sql" level="INFO" />
+    <logger name="org.apache.shiro" level="INFO" />
+    <logger name="org.mybatis.spring" level="INFO" />
+    <logger name="org.springframework" level="INFO" />
+    <logger name="org.springframework.context" level="WARN" />
+    <logger name="org.springframework.beans" level="WARN" />
+    <logger name="com.baomidou.mybatisplus" level="INFO" />
+    <logger name="org.apache.ibatis.io" level="INFO" />
+    <logger name="org.apache.velocity" level="INFO" />
+    <logger name="org.eclipse.jetty" level="INFO" />
+    <logger name="io.undertow" level="INFO" />
+    <logger name="org.xnio.nio" level="INFO" />
+    <logger name="org.thymeleaf" level="INFO" />
+    <logger name="springfox.documentation" level="INFO" />
+    <logger name="org.hibernate.validator" level="INFO" />
+    <logger name="com.netflix.loadbalancer" level="INFO" />
+    <logger name="com.netflix.hystrix" level="INFO" />
+    <logger name="com.netflix.zuul" level="INFO" />
+    <logger name="de.codecentric" level="INFO" />
+    <!-- cache INFO -->
+    <logger name="net.sf.ehcache" level="INFO" />
+    <logger name="org.springframework.cache" level="INFO" />
+    <!-- cloud -->
+    <logger name="org.apache.http" level="INFO" />
+    <logger name="com.netflix.discovery" level="INFO" />
+    <logger name="com.netflix.eureka" level="INFO" />
+    <!-- 业务日志 -->
+    <Logger name="org.springblade" level="INFO" />
+    <Logger name="org.springblade.core.tenant" level="INFO" />
+    <Logger name="org.springblade.core.version" level="INFO" />
+    <Logger name="com.fjwanfu" level="INFO" />
+
+    <!-- 减少nacos日志 -->
+    <logger name="com.alibaba.nacos" level="ERROR" />
+
+</configuration>
