@@ -133,8 +133,6 @@ public class BizServiceImpl implements IBizService {
                 }
             }
             // ======================================================
-//			log.info(">>> [mq转发]监听处理时间:{},放行数据:{}", LocalDateTime.now(ZoneId.of("Asia/Shanghai")), JSONUtil.toJsonStr(hexFrameWrapper));
-//			LogUtil.logJsonMessage("sl651报文-MQ放行数据", hexFrameWrapper.getMessage().getHeader().getDetectAddress(), hexFrameWrapper);
             // 转发消息
             forward(hexFrameWrapper);
         } catch (Exception e) {
@@ -319,6 +317,7 @@ public class BizServiceImpl implements IBizService {
 
         String address = header.getDetectAddress();
         if (reportDisplay) {
+            LogUtil.logJsonMessage("sl651报文-MQ放行数据", wrapper.getMessage().getHeader().getDetectAddress(), wrapper);
             rabbitTemplate.convertAndSend(sl651Properties.getPublisherExchange()
                     , routingKey
                     , JSONUtil.toJsonStr(wrapper)
