@@ -16,18 +16,27 @@ import java.math.BigDecimal;
 @ToString
 public class HexFrameBodyPropertiesMessage {
 
-	// 标识符引导符
-	private String typeCode;
+    // 标识符引导符
+    private String typeCode;
 
-	// 数据字节数
-	private Integer dataSize;
+    // 标识符引导名称
+    private String typeName;
 
-	// 小数位数
-	private Integer decimalSize;
+    // 索引号
+    private Integer index = 0;
 
-	// 原始数据
-	private String originalData;
+    // 数据字节数
+    private Integer dataSize;
 
-	// 实际值
-	private BigDecimal val;
+    // 小数位数
+    private Integer decimalSize;
+
+    // 原始数据
+    private String originalData;
+
+    // 非数据内容
+    private String contentData;
+
+    // 实际值
+    private BigDecimal val;
 }

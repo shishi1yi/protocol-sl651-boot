@@ -57,9 +57,21 @@ public class FrameM124Util {
         return "20" + HexStringUtil.int2HexStr(bodyFrame, 18, 22);
     }
 
+    /**
+     * 获取正文要素内容，23长度这是截止到观测时间之后
+     */
     public static char[] getBodyElementByRegularReport(char[] bodyFrame) {
         char[] bodyElementFrame = new char[bodyFrame.length - 23];
         System.arraycopy(bodyFrame, 23, bodyElementFrame, 0, bodyFrame.length - 23);
+        return bodyElementFrame;
+    }
+
+    /**
+     * 获取正文要素内容，从测站类型码后开始
+     */
+    public static char[] getBodyElementReport(char[] bodyFrame) {
+        char[] bodyElementFrame = new char[bodyFrame.length - 16];
+        System.arraycopy(bodyFrame, 16, bodyElementFrame, 0, bodyFrame.length - 16);
         return bodyElementFrame;
     }
 

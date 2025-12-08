@@ -13,16 +13,20 @@ import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.codec.binary.Hex;
 import org.junit.jupiter.api.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.test.context.SpringBootTest;
 
 import java.util.concurrent.TimeUnit;
 
+@Slf4j
 @SpringBootTest
 class ProtocolSl651BootApplicationTests {
 
-   @Test
+    @Test
    void contextLoads() {
    }
 
@@ -51,7 +55,7 @@ class ProtocolSl651BootApplicationTests {
             channelFuture.channel().closeFuture().await(1L, TimeUnit.SECONDS);
 
         } catch (InterruptedException e) {
-            e.printStackTrace();
+            log.warn("出错", e);
         } finally {
             worker.shutdownGracefully();
         }

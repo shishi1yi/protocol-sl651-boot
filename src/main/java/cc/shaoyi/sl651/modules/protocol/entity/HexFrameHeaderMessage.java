@@ -14,27 +14,30 @@ import lombok.experimental.Accessors;
 @ToString
 public class HexFrameHeaderMessage {
 
-	// 中心站地址
-	private String hubAddress;
+    // 中心站地址
+    private String hubAddress;
 
-	// 遥测站地址
-	private String detectAddress;
+    // 遥测站地址
+    private String detectAddress;
 
-	// 密码
-	private String password;
+    // 密码
+    private String password;
 
-	// 功能码
-	private String commandCode;
+    // 功能码
+    private String commandCode;
 
-	// 正文长度
-	private Long bodyLength;
+    // 功能码名称
+    private String commandName;
 
-	// 是否为m3模式
-	private boolean m3Mode;
+    // 正文长度
+    private Long bodyLength;
 
-	// 包总数，m3模式才有
-	private Integer frameCnt;
+    // 是否为m3模式
+    private boolean m3Mode;
 
-	// 包序列号，m3模式才有
-	private String frameSerialNo;
+    // 包总数，m3模式才有
+    private Integer frameCnt;
+
+    // 包序列号，m3模式才有
+    private String frameSerialNo;
 }

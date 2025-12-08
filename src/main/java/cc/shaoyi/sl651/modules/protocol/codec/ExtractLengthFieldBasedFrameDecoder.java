@@ -19,7 +19,7 @@ import java.util.Locale;
 @Slf4j
 public class ExtractLengthFieldBasedFrameDecoder extends LengthFieldBasedFrameDecoder {
 
-	private int endFieldLength;
+	private final int endFieldLength;
 
 	public ExtractLengthFieldBasedFrameDecoder(int maxFrameLength, int lengthFieldOffset, int lengthFieldLength, int lengthAdjustment, int initialBytesToStrip, int endFieldLength) {
 		super(maxFrameLength, lengthFieldOffset, lengthFieldLength, lengthAdjustment, initialBytesToStrip);

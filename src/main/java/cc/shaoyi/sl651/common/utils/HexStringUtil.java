@@ -2,14 +2,13 @@ package cc.shaoyi.sl651.common.utils;
 
 import io.netty.buffer.ByteBuf;
 
-/**
- * @author shaoyi
- * @date 2022/5/12 22:57
- */
+import java.nio.charset.StandardCharsets;
+
+
 public class HexStringUtil {
 
     private static final char[] HEX_CHAR =
-        {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'};
+            {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'};
 
     // "7e7e" => [7e,7e]
     public static char[] hexStr2CharArray(String hexStr) {
@@ -38,6 +37,20 @@ public class HexStringUtil {
             str = "0" + str;
         }
         return str;
+    }
+
+    // 16进制字符串转UTF-8的字符传
+    public static String hexToUtf8(String hexString) {
+        if (hexString == null || hexString.length() % 2 != 0) {
+            throw new IllegalArgumentException("非法的字符串：" +  hexString);
+        }
+
+        byte[] bytes = new byte[hexString.length() / 2];
+        for (int i = 0; i < bytes.length; i++) {
+            bytes[i] = (byte) Integer.parseInt(hexString.substring(i * 2, i * 2 + 2), 16);
+        }
+
+        return new String(bytes, StandardCharsets.UTF_8);
     }
 
     public static String bytes2HexStr(byte[] bytes) {
@@ -74,3 +87,4 @@ public class HexStringUtil {
         return str;
     }
 }
+

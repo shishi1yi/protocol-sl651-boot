@@ -48,54 +48,58 @@ public class HexFrameDecoder extends ByteToMessageDecoder {
 		HexFrameMessage frameMessage = new HexFrameMessage();
 		wrapper.setMessage(frameMessage);
 		String frameHexStr = ByteBufUtil.hexDump(byteBuf);
-		try {
-			wrapper.setRemoteAddress(channel.remoteAddress().toString())
-				.setLocalAddress(channel.localAddress().toString());
-			log.info("会话通道:{}, sl651-2014, hex帧消息报文 {}", channel, frameHexStr);
-			wrapper.setOriginalFrame(frameHexStr);
-			char[] frame = HexStringUtil.hexStr2CharArray(frameHexStr);
-			if (FrameUtil.verifyCRC16Code(frameHexStr)) {
-				log.info("CRC16校验成功");
-				// 解析帧头
-				HexFrameHeaderMessage headerMessage = frameHeaderDecoder.decodeHexHeader(frame);
-				frameMessage.setHeader(headerMessage);
-				int bodyLength = headerMessage.getBodyLength().intValue();
-				if (headerMessage.isM3Mode()) {
-					frameMessage.setBody(frameBodyDecoder.decodeM3Body(FrameUtil.getM3Body(frame, bodyLength)));
-				} else {
-					frameMessage.setBody(frameBodyDecoder.decodeM124Body(FrameUtil.getM124Body(frame, bodyLength),
-						FrameCommandCodeEnum.getFrameFuncEnum(headerMessage.getCommandCode())));
-				}
-				frameMessage.setBodyEndFrameMark(FrameUtil.getBodyEndSymbol(frame));
-				frameMessage.setCrcCode(FrameUtil.getCRC16Code(frame));
-				wrapper.setSuccess(true);
-				if (!"2f".equalsIgnoreCase(wrapper.getMessage().getHeader().getCommandCode())) {
-					LogUtil.logJsonMessage("sl651报文解析成功",wrapper.getMessage().getHeader().getDetectAddress(), wrapper);
-				}
-				log.info("sl651-2014解析成功，解析结果 {}", JSONUtil.toJsonStr(wrapper));
-			} else {
-				wrapper.setSuccess(false);
-				String gatewayCode = StrUtil.sub(
-					StrUtil.subAfter(frameHexStr, "7e7e", false), // 从关键词后开始
-					2,  // 往后偏移2个长度
-					12  // 偏移2后再取10个字符（2 + 10 = 12）
-				);
-				LogUtil.logJsonMessage("sl651报文CRC16校验失败",gatewayCode, wrapper);
-				log.info("CRC16校验失败, 解析结果 {}", JSONUtil.toJsonStr(wrapper));
-			}
-		} catch (Exception e) {
-			log.error("会话通道:{}, sl651-2014 hex帧消息编码错误, hex帧消息报文 {}", channel, ByteBufUtil.hexDump(byteBuf), e);
-			wrapper.setSuccess(false);
-			String gatewayCode = StrUtil.sub(
-				StrUtil.subAfter(frameHexStr, "7e7e", false), // 从关键词后开始
-				2,  // 往后偏移2个长度
-				12  // 偏移2后再取10个字符（2 + 10 = 12）
-			);
-			LogUtil.logJsonMessage("sl651报文hex帧消息编码错误",gatewayCode, wrapper);
-		} finally {
-			byteBuf.skipBytes(byteBuf.readableBytes());
-		}
-		return wrapper;
+        try {
+            wrapper.setRemoteAddress(channel.remoteAddress().toString())
+                    .setLocalAddress(channel.localAddress().toString());
+            log.info("会话通道:{}, sl651-2014, hex帧消息报文 {}", channel, frameHexStr);
+            wrapper.setOriginalFrame(frameHexStr);
+            char[] frame = HexStringUtil.hexStr2CharArray(frameHexStr);
+            if (FrameUtil.verifyCRC16Code(frameHexStr)) {
+                // 解析帧头
+                HexFrameHeaderMessage headerMessage = frameHeaderDecoder.decodeHexHeader(frame);
+                frameMessage.setHeader(headerMessage);
+                int bodyLength = headerMessage.getBodyLength().intValue();
+                if (headerMessage.isM3Mode()) {
+                    frameMessage.setBody(frameBodyDecoder.decodeM3Body(FrameUtil.getM3Body(frame, bodyLength)));
+                } else {
+                    frameMessage.setBody(
+                            frameBodyDecoder.decodeM124Body(
+                                    FrameUtil.getM124Body(frame, bodyLength),
+                                    FrameCommandCodeEnum.getFrameFuncEnum(headerMessage.getCommandCode())
+                            )
+                    );
+                }
+                frameMessage.setBodyEndFrameMark(FrameUtil.getBodyEndSymbol(frame));
+                frameMessage.setCrcCode(FrameUtil.getCRC16Code(frame));
+                wrapper.setSuccess(true);
+                if (!"2f".equalsIgnoreCase(wrapper.getMessage().getHeader().getCommandCode())) {
+                    LogUtil.logJsonMessage("sl651报文解析成功",wrapper.getMessage().getHeader().getDetectAddress(), wrapper);
+                } else {
+                    log.info("sl651-2014解析成功，解析结果 {}", JSONUtil.toJsonStr(wrapper));
+                }
+            } else {
+                wrapper.setSuccess(false);
+                String gatewayCode = StrUtil.sub(
+                        StrUtil.subAfter(frameHexStr, "7e7e", false), // 从关键词后开始
+                        2,  // 往后偏移2个长度
+                        12  // 偏移2后再取10个字符（2 + 10 = 12）
+                );
+                LogUtil.logJsonMessage("sl651报文CRC16校验失败",gatewayCode, wrapper);
+//				log.info("CRC16校验失败, 解析结果 {}", JSONUtil.toJsonStr(wrapper));
+            }
+        } catch (Exception e) {
+            log.error("会话通道:{}, sl651-2014 hex帧消息编码错误, hex帧消息报文 {}", channel, ByteBufUtil.hexDump(byteBuf), e);
+            wrapper.setSuccess(false);
+            String gatewayCode = StrUtil.sub(
+                    StrUtil.subAfter(frameHexStr, "7e7e", false), // 从关键词后开始
+                    2,  // 往后偏移2个长度
+                    12  // 偏移2后再取10个字符（2 + 10 = 12）
+            );
+            LogUtil.logJsonMessage("sl651报文hex帧消息编码错误",gatewayCode, wrapper);
+        } finally {
+            byteBuf.skipBytes(byteBuf.readableBytes());
+        }
+        return wrapper;
 	}
 
 }

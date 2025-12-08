@@ -6,14 +6,14 @@
               value="%d{yyyy-MM-dd HH:mm:ss.SSS} ${LOG_LEVEL_PATTERN:-%5p} ${PID:- } [%15.15t] %-40.40logger{39} : %m%n${LOG_EXCEPTION_CONVERSION_WORD:-%wEx}"/>
 
     <property name="log.file.pattern" value="%d{yyyy-MM-dd}_%i.log"/>
-    <property name="log.maxFileSize" value="100MB" />
-    <property name="log.totalSizeCap" value="1GB" />
-    <property name="log.maxHistory" value="7" />
+    <property name="log.maxFileSize" value="300MB" />
+    <property name="log.totalSizeCap" value="10GB" />
+    <property name="log.maxHistory" value="30" />
     <property name="log.discardingThreshold" value="0" />
     <property name="log.queueSize" value="256" />
     <property name="log.charset" value="UTF-8" />
 
-    <define name="ip" class="com.fjwanfu.modules.protocol.sl651.config.LogBackIpConfig"/>
+    <define name="ip" class="cc.shaoyi.sl651.modules.protocol.config.LogBackIpConfig"/>
 
     <!--读取spring配置的属性-->
     <springProperty scope="context" name="rabbitmq_host" source="spring.rabbitmq.host"/>
@@ -52,7 +52,7 @@
         </encoder>
     </appender>
 
-    <!-- DEBUG 系统日志输出 -->
+    <!-- 系统日志输出 -->
     <appender name="file_info" class="ch.qos.logback.core.rolling.RollingFileAppender">
         <file>${log.path}/${springAppName}/info.log</file>
         <append>true</append>
@@ -176,14 +176,12 @@
     </if>
 
     <!-- 日志输出级别 -->
-    <root level="debug">
+    <root level="INFO">
         <appender-ref ref="STDOUT"/>
         <appender-ref ref="${STDOUT_APPENDER}"/>
         <appender-ref ref="ASYNC-INFO"/>
         <appender-ref ref="LogAmqpAppender"/>
     </root>
-
-    <logger name="org.springblade" level="debug" />
 
     <logger name="net.sf.ehcache" level="INFO" />
     <logger name="druid.sql" level="INFO" />
@@ -224,10 +222,7 @@
     <logger name="com.netflix.discovery" level="INFO" />
     <logger name="com.netflix.eureka" level="INFO" />
     <!-- 业务日志 -->
-    <Logger name="org.springblade" level="INFO" />
-    <Logger name="org.springblade.core.tenant" level="INFO" />
-    <Logger name="org.springblade.core.version" level="INFO" />
-    <Logger name="com.fjwanfu" level="INFO" />
+    <Logger name="cc.shaoyi.sl651" level="INFO" />
 
     <!-- 减少nacos日志 -->
     <logger name="com.alibaba.nacos" level="ERROR" />

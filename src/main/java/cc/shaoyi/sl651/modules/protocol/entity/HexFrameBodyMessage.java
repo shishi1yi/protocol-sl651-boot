@@ -17,23 +17,29 @@ import java.util.List;
 @ToString
 public class HexFrameBodyMessage {
 
-	// 流水号
-	private Long serialNo;
+    // 流水号
+    private Long serialNo;
 
-	// 发报时间 YYMMDDHHmmSS
-	private String sendTime;
+    // 发报时间 YYMMDDHHmmSS
+    private String sendTime;
 
-	// 遥测站地址
-	private String detectAddress;
+    // 发报时间
+    private String sendTimeShow;
 
-	// 遥测站分类编码
-	private String detectAddressTypeCode;
+    // 遥测站地址
+    private String detectAddress;
 
-	// 观测时间 YYMMDDHHmm
-	private String observeTime;
+    // 遥测站分类编码
+    private String detectAddressTypeCode;
 
-	// 遥测信息
-	private LinkedHashMap<String, List<HexFrameBodyPropertiesMessage>> propertiesMessage;
+    // 观测时间 YYMMDDHHmm
+    private String observeTime;
+
+    // 观测时间
+    private String observeTimeShow;
+
+    // 遥测信息
+    private LinkedHashMap<String, List<HexFrameBodyPropertiesMessage>> propertiesMessage;
 
 
 }
