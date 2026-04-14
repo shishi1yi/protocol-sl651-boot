@@ -4,8 +4,6 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.experimental.Accessors;
 
-import java.io.Serial;
-
 /**
  * @author ShaoYi
  * @Description
@@ -19,6 +17,5 @@ public class FrameMessageResp extends HexFrameWrapper {
 	private String exceptionInfo;
 
 
-	@Serial
 	private static final long serialVersionUID = -2406652604673302159L;
 }

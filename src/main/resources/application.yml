@@ -20,14 +20,15 @@ sl651:
     publisher-exchange: "sl651.exchange"
     publisher-routing-key: "sl651.publisher"
     publisher-delay: 86400000
-    hourReportDisplay: false
-    regularReportDisplay: true
-    overtimeReportDisplay: false
-    hunanTransfer: true
     diff-minute: 70
     message-minutes-expiration: 60
     distribute-routes: false
     old-data-forward-routes: false
+    tcp-notice-exchange: "notice-exchange"
+    tcp-notice-routing-key: "notice-exchange-route"
+    hour-report-display: false
+    overtime-report-display: false
+    regular-report-display: true
   property:
     limits:
       - {code: "20", open: 0, close: 500}

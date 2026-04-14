@@ -13,18 +13,13 @@ public interface FrameBodyDecoder {
 
 	/**
 	 * 处理M3类型正文帧消息
-	 * @param bodyFrame
-	 * @return
 	 */
 	HexFrameBodyMessage decodeM3Body(char[] bodyFrame);
 
 	/**
 	 * 处理M1\M2\M4类型正文帧消息
-	 * @param bodyFrame
-	 * @param commandCodeEnum
-	 * @return
 	 */
-	HexFrameBodyMessage decodeM124Body(char[] bodyFrame, FrameCommandCodeEnum commandCodeEnum);
+	HexFrameBodyMessage decodeM124Body(char[] bodyFrame, FrameCommandCodeEnum commandCodeEnum, String rawCode);
 
 
 }

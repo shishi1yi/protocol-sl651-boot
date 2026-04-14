@@ -52,7 +52,7 @@ class ProtocolSl651BootApplicationTests {
                 }
             });
             ChannelFuture channelFuture = bootstrap.connect("127.0.0.1", 8651).sync();
-            channelFuture.channel().closeFuture().await(1L, TimeUnit.SECONDS);
+            channelFuture.channel().closeFuture().await(3L, TimeUnit.SECONDS);
 
         } catch (InterruptedException e) {
             log.warn("出错", e);

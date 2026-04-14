@@ -5,7 +5,6 @@ import lombok.ToString;
 import lombok.experimental.Accessors;
 import org.springframework.context.ApplicationEvent;
 
-import java.io.Serial;
 import java.time.LocalDateTime;
 
 /**
@@ -18,7 +17,6 @@ import java.time.LocalDateTime;
 @Accessors(chain = true)
 public class EventMessage extends ApplicationEvent {
 
-	@Serial
 	private static final long serialVersionUID = -4684606228228352216L;
 
 	private HexFrameWrapper wrapper;

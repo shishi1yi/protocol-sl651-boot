@@ -1,14 +1,14 @@
 package cc.shaoyi.sl651.modules.protocol.props;
 
-import jakarta.validation.constraints.Min;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
+import cc.shaoyi.sl651.common.enums.TransferProtocolTypeEnum;
 import lombok.Data;
 import lombok.ToString;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
-
+import javax.validation.constraints.Min;
+import javax.validation.constraints.NotBlank;
+import javax.validation.constraints.NotNull;
 
 /**
  * @description: Sl651属性
@@ -54,6 +54,25 @@ public class Sl651NettyContentProperties {
 	@NotBlank(message = "消息的路由键不能为空")
 	private String publisherRoutingKey;
 
+
+	/**
+	 * 设备tcp连接状态是否通知
+	 */
+	private Boolean tcpDeviceNotice = Boolean.FALSE;
+
+
+	/**
+	 *  通知tcp连接的mq交换机名称
+	 */
+	@NotBlank(message = "通知tcp连接的mq交换机名称不能为空")
+	private String tcpNoticeExchange;
+
+	/**
+	 *  通知tcp连接的路由键
+	 */
+	@NotBlank(message = "通知tcp连接的mq路由键不能为空")
+	private String tcpNoticeRoutingKey;
+
 	/**
 	 * 过期时间
 	 */
@@ -91,9 +110,20 @@ public class Sl651NettyContentProperties {
 	private Integer forwardPort;
 
 	/**
-	 * 湖南协议解析
+	 * 协议解析类型，默认公司自定义协议
 	 */
-	private Boolean hunanTransfer = Boolean.FALSE;
+	@NotNull(message = "协议解析类型不能为空")
+	private TransferProtocolTypeEnum transferType = TransferProtocolTypeEnum.PRI_COMPANY;
+
+	/**
+	 * 自身IP
+	 */
+	private String hubIP;
+
+	/**
+	 * 自身web端口号
+	 */
+	private Integer hubWebPort;
 
 	/**
 	 * 分钟时差

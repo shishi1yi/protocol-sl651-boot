@@ -1,12 +1,18 @@
 package cc.shaoyi.sl651.modules.protocol.biz.impl;
 
+import cc.shaoyi.sl651.common.enums.ChannelTypeEnum;
 import cc.shaoyi.sl651.common.enums.FrameCommandCodeEnum;
+import cc.shaoyi.sl651.common.enums.TransferProtocolTypeEnum;
+import cc.shaoyi.sl651.common.utils.CommonUtil;
 import cc.shaoyi.sl651.common.utils.FrameUtil;
 import cc.shaoyi.sl651.common.utils.HexStringUtil;
 import cc.shaoyi.sl651.common.utils.LogUtil;
 import cc.shaoyi.sl651.modules.protocol.biz.IBizPropertiesMessageService;
 import cc.shaoyi.sl651.modules.protocol.biz.IBizService;
+import cc.shaoyi.sl651.modules.protocol.channel.executor.ChannelExecutor;
+import cc.shaoyi.sl651.modules.protocol.channel.executor.ChannelExecutorFactory;
 import cc.shaoyi.sl651.modules.protocol.codec.FrameBodyDecoder;
+import cc.shaoyi.sl651.modules.protocol.codec.FrameEncoder;
 import cc.shaoyi.sl651.modules.protocol.codec.FrameHeaderDecoder;
 import cc.shaoyi.sl651.modules.protocol.entity.*;
 import cc.shaoyi.sl651.modules.protocol.props.PropertyLimit;
@@ -19,12 +25,16 @@ import cn.hutool.core.date.DateTime;
 import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.lang.Opt;
 import cn.hutool.core.text.StrFormatter;
-import cn.hutool.core.util.EnumUtil;
 import cn.hutool.core.util.NumberUtil;
+import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.StrUtil;
+import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufUtil;
+import io.netty.channel.Channel;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
@@ -45,7 +55,7 @@ import java.util.*;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class BizServiceImpl implements IBizService {
+public class BizServiceImpl implements IBizService{
 
     private final RabbitTemplate rabbitTemplate;
 
@@ -61,11 +71,13 @@ public class BizServiceImpl implements IBizService {
 
     private final IBizPropertiesMessageService bizPropertiesMessageService;
 
+    private final FrameEncoder frameEncoder;
+
+    private final Sl651NettyContentProperties sl651NettyContentProperties;
+
 
     /**
      * 处理业务
-     * @param hexFrameWrapper
-     * @return
      */
     @Override
     public boolean handler(HexFrameWrapper hexFrameWrapper) {
@@ -76,7 +88,6 @@ public class BizServiceImpl implements IBizService {
 
     /**
      * 消息处理监听
-     * @param eventMessage
      */
     @Async
     @EventListener
@@ -165,8 +176,6 @@ public class BizServiceImpl implements IBizService {
                         , e
                 );
             }
-        } else {
-            log.info("[tcp转发禁用]设备数据报文：{}", hexFrameWrapper.getOriginalFrame());
         }
     }
 
@@ -207,31 +216,61 @@ public class BizServiceImpl implements IBizService {
     private void forward(HexFrameWrapper wrapper) {
         HexFrameHeaderMessage header = wrapper.getMessage().getHeader();
         String commandCode = header.getCommandCode();
-        FrameCommandCodeEnum commandEnum = EnumUtil.likeValueOf(FrameCommandCodeEnum.class, commandCode);
+        FrameCommandCodeEnum commandEnum = FrameCommandCodeEnum.getFrameFuncEnum(commandCode);
         switch (commandEnum) {
-            case TEST_REPORT -> {
+            case TEST_REPORT: {
                 log.info(">>>测试报(30)不做转发, 测站编码(测站地址):{}", header.getDetectAddress());
+                break;
             }
-            case REGULAR_REPORT -> {
+            case REGULAR_REPORT: {
+                // 定时报是否转发
                 Boolean reportDisplay = sl651Properties.getRegularReportDisplay();
                 sendHexFrameWrapperToMQ(wrapper, reportDisplay, commandEnum);
+                break;
             }
-            case OVERTIME_REPORT -> {
+            case OVERTIME_REPORT: {
+                // 加时报是否转发
                 Boolean reportDisplay = sl651Properties.getOvertimeReportDisplay();
                 sendHexFrameWrapperToMQ(wrapper, reportDisplay, commandEnum);
+                break;
             }
-            case HOUR_REPORT -> {
+            case HOUR_REPORT: {
+                // 小时报是否转发
                 Boolean reportDisplay = sl651Properties.getHourReportDisplay();
                 // 小时报文 处理补充属性消息的逻辑
                 bizPropertiesMessageService.handleHourReportJoinPropertiesMessage(wrapper);
                 sendHexFrameWrapperToMQ(wrapper, reportDisplay, commandEnum);
+                break;
             }
-            default -> {
+            case CURRENT_REPORT:
+            case BASE_PARAM:
+            case REVISE_BASE_PARAM:
+            case RUNNING_PARAM:
+            case REVISE_RUNNING_PARAM:
+            case SOFTWARE_VERSION: {
+                sendHexFrameWrapperToMQ(wrapper, true, commandEnum);
+                break;
+            }
+            case PRI_COMMAND: {
+                // 在这里判断企业传输条件
+                if (sl651NettyContentProperties.getTransferType() == TransferProtocolTypeEnum.PRI_COMPANY) {
+                    // 私有命令，根据原始码判断是否需要转发
+                    FrameCommandCodeEnum.PRI_COMPANY priCompany = FrameCommandCodeEnum.PRI_COMPANY.getFrameFuncEnum(commandCode);
+                    if (priCompany == null) {
+                        log.info(">>>私有命令报文-企业协议-未定义的功能码({}),不做转发, 测站编码(测站地址):{}", commandCode, header.getDetectAddress());
+                        return;
+                    }
+                    sendHexPriCompanyWrapperToMQ(wrapper, priCompany);
+                }
+                break;
+            }
+            default: {
                 LogUtil.logJsonMessage(
                         StrFormatter.format("测站码({}),跳过转发(功能码{})步骤, ", header.getDetectAddress(), commandCode),
                         header.getDetectAddress(),
                         wrapper
                 );
+                break;
             }
         }
     }
@@ -273,70 +312,121 @@ public class BizServiceImpl implements IBizService {
                 }
             }
         }
-        return switch (commandEnum) {
-            case REGULAR_REPORT, OVERTIME_REPORT ->
-                    StrFormatter.format("{}{}", sl651Properties.getPublisherRoutingKey(), special);
-            case HOUR_REPORT ->
-                    StrFormatter.format("{}{}", FrameCommandCodeEnum.HOUR_REPORT.name().toLowerCase(Locale.ROOT), special);
-            default -> {
-                LogUtil.logJsonMessage("sl651报文-获取mq路由key失败", wrapper.getMessage().getHeader().getDetectAddress(), wrapper);
-                throw new IllegalArgumentException(Opt.ofNullable(commandEnum).map(FrameCommandCodeEnum::getDesc).orElse("") + "未定义mq转发的路由key");
+        switch (commandEnum) {
+            case REGULAR_REPORT:
+            case OVERTIME_REPORT:
+            case CURRENT_REPORT: {
+                return StrFormatter.format("{}{}", sl651Properties.getPublisherRoutingKey(), special);
             }
-        };
+            case HOUR_REPORT: {
+                return StrFormatter.format("{}{}", FrameCommandCodeEnum.HOUR_REPORT.name().toLowerCase(Locale.ROOT), special);
+            }
+            case BASE_PARAM: {
+                return StrFormatter.format("{}{}", FrameCommandCodeEnum.BASE_PARAM.name().toLowerCase(Locale.ROOT), special);
+            }
+            case REVISE_BASE_PARAM: {
+                return StrFormatter.format("{}{}", FrameCommandCodeEnum.REVISE_BASE_PARAM.name().toLowerCase(Locale.ROOT), special);
+            }
+            case RUNNING_PARAM: {
+                return StrFormatter.format("{}{}", FrameCommandCodeEnum.RUNNING_PARAM.name().toLowerCase(Locale.ROOT), special);
+            }
+            case REVISE_RUNNING_PARAM: {
+                return StrFormatter.format("{}{}", FrameCommandCodeEnum.REVISE_RUNNING_PARAM.name().toLowerCase(Locale.ROOT), special);
+            }
+            case SOFTWARE_VERSION: {
+                return StrFormatter.format("{}{}", FrameCommandCodeEnum.SOFTWARE_VERSION.name().toLowerCase(Locale.ROOT), special);
+            }
+            default: {
+                LogUtil.logJsonMessage("sl651报文-获取mq路由key失败", wrapper.getMessage().getHeader().getDetectAddress(), wrapper);
+                return null;
+            }
+        }
     }
 
     /**
      * 旧数据的路由key
      */
     private String getOldDataMQRoutingKey(FrameCommandCodeEnum commandEnum) {
-        return switch (commandEnum) {
-            case REGULAR_REPORT, CURRENT_REPORT, OVERTIME_REPORT -> sl651Properties.getPublisherRoutingKey() + "_old";
-            case HOUR_REPORT -> FrameCommandCodeEnum.HOUR_REPORT.name().toLowerCase(Locale.ROOT) + "_old";
-            default ->
-                    throw new IllegalArgumentException(Opt.ofNullable(commandEnum).map(FrameCommandCodeEnum::getDesc).orElse("") + "未定义旧数据的mq转发的路由key");
-        };
+        switch (commandEnum) {
+            case REGULAR_REPORT:
+            case CURRENT_REPORT:
+            case OVERTIME_REPORT: {
+                return sl651Properties.getPublisherRoutingKey() + "_old";
+            }
+            case HOUR_REPORT: {
+                return FrameCommandCodeEnum.HOUR_REPORT.name().toLowerCase(Locale.ROOT) + "_old";
+            }
+            default: {
+                throw new IllegalArgumentException(Opt.ofNullable(commandEnum).map(FrameCommandCodeEnum::getDesc).orElse("") + "未定义旧数据的mq转发的路由key");
+            }
+        }
     }
 
     /**
      * 发送消息到mq
      */
     private void sendHexFrameWrapperToMQ(HexFrameWrapper wrapper, Boolean reportDisplay, FrameCommandCodeEnum commandEnum) {
+
         HexFrameHeaderMessage header = wrapper.getMessage().getHeader();
+
+        if (!reportDisplay) {
+            log.info(">>>[mq转发]禁止转发[{}], 测站编码(测站地址):{}, 原因:处于禁用状态", commandEnum.getDesc(), header.getDetectAddress());
+            return;
+        }
+
         String routingKey = getMQRoutingKey(commandEnum, wrapper);
+        // 没有配置的路由就结束
+        if (routingKey == null || "unknown".equals(routingKey)) {
+            log.info(">>>[mq转发]禁止转发[{}], 测站编码(测站地址):{}, 原因:未获取或没有配置路由key", commandEnum.getDesc(), header.getDetectAddress());
+            return;
+        }
 
         // 过早的数据转发到旧数据队列
         HexFrameBodyMessage body = wrapper.getMessage().getBody();
-        DateTime observeTS = DateUtil.parse(body.getObserveTime(), "yyyyMMddHHmm");
-        Long diffMinute = sl651Properties.getDiffMinute();
-        if (sl651Properties.getOldDataForwardRoutes() && DateUtil.compare(observeTS, DateUtil.date()) < 0 && DateUtil.betweenMs(observeTS, DateUtil.date()) > (diffMinute * 60 * 1000)) {
-            routingKey = getOldDataMQRoutingKey(commandEnum);
-            log.info(">>>[mq转发]开始转发[{}], 测站编码(测站地址、网关编码):{}, 报文中发送时间{}、报文中观测时间:{}, 根据观测超过{}分钟,转发到旧数据队列"
-                    , commandEnum.getDesc(), header.getDetectAddress(), body.getSendTime(), observeTS, diffMinute);
-            LogUtil.logJsonMessage("sl651报文-旧数据(设备上报历史数据)", header.getDetectAddress(), wrapper);
+        if (StrUtil.isNotBlank(body.getObserveTime())) {
+            DateTime observeTS = DateUtil.parse(body.getObserveTime(), "yyyyMMddHHmm");
+            Long diffMinute = sl651Properties.getDiffMinute();
+            if (sl651Properties.getOldDataForwardRoutes() && DateUtil.compare(observeTS, DateUtil.date()) < 0 && DateUtil.betweenMs(observeTS, DateUtil.date()) > (diffMinute * 60 * 1000)) {
+                routingKey = getOldDataMQRoutingKey(commandEnum);
+                log.info(">>>[mq转发]开始转发[{}], 测站编码(测站地址、网关编码):{}, 报文中发送时间{}、报文中观测时间:{}, 根据观测超过{}分钟,转发到旧数据队列"
+                        , commandEnum.getDesc(), header.getDetectAddress(), body.getSendTime(), observeTS, diffMinute);
+                LogUtil.logJsonMessage("sl651报文-旧数据(设备上报历史数据)", header.getDetectAddress(), wrapper);
+            }
         }
 
-        String address = header.getDetectAddress();
-        if (reportDisplay) {
-            LogUtil.logJsonMessage("sl651报文-MQ放行数据", wrapper.getMessage().getHeader().getDetectAddress(), wrapper);
-            rabbitTemplate.convertAndSend(sl651Properties.getPublisherExchange()
-                    , routingKey
-                    , JSONUtil.toJsonStr(wrapper)
-                    , message -> {
-                        message.getMessageProperties()
-                                //消息过期时间
-                                .setExpiration(Convert.toStr(sl651Properties.getPublisherDelay(), "86400000"));
-                        return message;
-                    });
-        } else {
-            log.info(">>>[mq转发]禁止转发[{}], 测站编码(测站地址):{}, 原因:处于禁用状态", commandEnum.getDesc(), address);
-        }
+
+//			LogUtil.logJsonMessage("sl651报文-MQ放行数据", wrapper.getMessage().getHeader().getDetectAddress(), wrapper);
+        rabbitTemplate.convertAndSend(sl651Properties.getPublisherExchange(),
+                routingKey,
+                JSONUtil.toJsonStr(wrapper),
+                message -> {
+                    message.getMessageProperties()
+                            //消息过期时间
+                            .setExpiration(Convert.toStr(sl651Properties.getPublisherDelay(), "86400000"));
+                    return message;
+                }
+        );
+
     }
 
 
     /**
+     * 发送企业私有协议的消息到mq
+     */
+    private void sendHexPriCompanyWrapperToMQ(HexFrameWrapper wrapper, FrameCommandCodeEnum.PRI_COMPANY priCompany) {
+        String routingKey = StrFormatter.format("{}.{}", sl651Properties.getPublisherRoutingKey(), priCompany.getCode().toLowerCase(Locale.ROOT));
+        rabbitTemplate.convertAndSend(sl651Properties.getPublisherExchange()
+                , routingKey
+                , JSONUtil.toJsonStr(wrapper)
+                , message -> {
+                    message.getMessageProperties()
+                            //消息过期时间
+                            .setExpiration(Convert.toStr(sl651Properties.getPublisherDelay(), "86400000"));
+                    return message;
+                });
+    }
+    /**
      * 解析帧
-     * @param message
-     * @return
      */
     public FrameMessageResp parseFrame(FrameMessageReq message) {
         String messageStr = JSONUtil.toJsonStr(message);
@@ -371,7 +461,8 @@ public class BizServiceImpl implements IBizService {
                     frameMessage.setBody(
                             frameBodyDecoder.decodeM124Body(
                                     FrameUtil.getM124Body(frame, bodyLength),
-                                    FrameCommandCodeEnum.getFrameFuncEnum(headerMessage.getCommandCode())
+                                    FrameCommandCodeEnum.getFrameFuncEnum(headerMessage.getCommandCode()),
+                                    headerMessage.getCommandCode()
                             )
                     );
                 }
@@ -393,6 +484,262 @@ public class BizServiceImpl implements IBizService {
 
 
 
+    @Override
+    public EncodeMessage upgrade(String detectAddr, List<JSONObject> params) {
+        ChannelExecutor channelExecutor = ChannelExecutorFactory.loadInstance().getExecutor(ChannelTypeEnum.detect);
+        Channel channel = channelExecutor.getChannel(detectAddr);
+        // 生成随机流水号（1-65535）
+        int serialNo = RandomUtil.randomInt(1, 65536);
+        if (Objects.nonNull(channel)) {
+            ByteBuf byteBuf = frameEncoder.encodeUpgrade(serialNo, channelExecutor.getHeaderMessage(detectAddr), params);
+            if (Objects.nonNull(byteBuf)) {
+                channel.writeAndFlush(byteBuf);
+
+                String serialNoHex = CommonUtil.serialNoHex(serialNo);
+                String frameHexStr = ByteBufUtil.hexDump(byteBuf);
+
+                // 因为固件升级回文功能是e3 所以这里写死为e3
+                String reqCode = CommonUtil.createReqCode(detectAddr, "e3", serialNo);
+
+                return EncodeMessage.builder()
+                        .serialNoHex(serialNoHex)
+                        .serialNo(serialNo)
+                        .detectAddress(detectAddr)
+                        .frameHex(frameHexStr)
+                        .reqCode(reqCode)
+                        .build();
+            }
+        }
+        return null;
+    }
+
+    @Override
+    public EncodeMessage op37(String detectAddr) {
+        ChannelExecutor channelExecutor = ChannelExecutorFactory.loadInstance().getExecutor(ChannelTypeEnum.detect);
+        Channel channel = channelExecutor.getChannel(detectAddr);
+        // 生成随机流水号（1-65535）
+        int serialNo = RandomUtil.randomInt(1, 65536);
+        if (Objects.nonNull(channel)) {
+            ByteBuf byteBuf = frameEncoder.encodeAsk37(serialNo, channelExecutor.getHeaderMessage(detectAddr));
+            if (Objects.nonNull(byteBuf)) {
+                channel.writeAndFlush(byteBuf);
+
+                String serialNoHex = CommonUtil.serialNoHex(serialNo);
+                String frameHexStr = ByteBufUtil.hexDump(byteBuf);
+
+                String reqCode = CommonUtil.createReqCode(detectAddr, "37", serialNo);
+
+                return EncodeMessage.builder()
+                        .serialNoHex(serialNoHex)
+                        .serialNo(serialNo)
+                        .detectAddress(detectAddr)
+                        .frameHex(frameHexStr)
+                        .reqCode(reqCode)
+                        .build();
+            }
+        }
+        return null;
+    }
+
+    @Override
+    public EncodeMessage opE0(String detectAddr) {
+        ChannelExecutor channelExecutor = ChannelExecutorFactory.loadInstance().getExecutor(ChannelTypeEnum.detect);
+        Channel channel = channelExecutor.getChannel(detectAddr);
+        // 生成随机流水号（1-65535）
+        int serialNo = RandomUtil.randomInt(1, 65536);
+        if (Objects.nonNull(channel)) {
+            ByteBuf byteBuf = frameEncoder.encodeAskE0(serialNo, channelExecutor.getHeaderMessage(detectAddr));
+            if (Objects.nonNull(byteBuf)) {
+                channel.writeAndFlush(byteBuf);
+
+                String serialNoHex = CommonUtil.serialNoHex(serialNo);
+                String frameHexStr = ByteBufUtil.hexDump(byteBuf);
+
+                String reqCode = CommonUtil.createReqCode(detectAddr, "e0", serialNo);
+
+                return EncodeMessage.builder()
+                        .serialNoHex(serialNoHex)
+                        .serialNo(serialNo)
+                        .detectAddress(detectAddr)
+                        .frameHex(frameHexStr)
+                        .reqCode(reqCode)
+                        .build();
+            }
+        }
+        return null;
+    }
+
+    @Override
+    public EncodeMessage opE2(String detectAddr) {
+        ChannelExecutor channelExecutor = ChannelExecutorFactory.loadInstance().getExecutor(ChannelTypeEnum.detect);
+        Channel channel = channelExecutor.getChannel(detectAddr);
+        // 生成随机流水号（1-65535）
+        int serialNo = RandomUtil.randomInt(1, 65536);
+        if (Objects.nonNull(channel)) {
+            ByteBuf byteBuf = frameEncoder.encodeAskE2(serialNo, channelExecutor.getHeaderMessage(detectAddr));
+            if (Objects.nonNull(byteBuf)) {
+                channel.writeAndFlush(byteBuf);
+
+                String serialNoHex = CommonUtil.serialNoHex(serialNo);
+                String frameHexStr = ByteBufUtil.hexDump(byteBuf);
+
+                String reqCode = CommonUtil.createReqCode(detectAddr, "e2", serialNo);
+
+                return EncodeMessage.builder()
+                        .serialNoHex(serialNoHex)
+                        .serialNo(serialNo)
+                        .detectAddress(detectAddr)
+                        .frameHex(frameHexStr)
+                        .reqCode(reqCode)
+                        .build();
+            }
+        }
+        return null;
+    }
+
+    @Override
+    public EncodeMessage op41(String detectAddr, List<JSONObject> params) {
+        ChannelExecutor channelExecutor = ChannelExecutorFactory.loadInstance().getExecutor(ChannelTypeEnum.detect);
+        Channel channel = channelExecutor.getChannel(detectAddr);
+        // 生成随机流水号（1-65535）
+        int serialNo = RandomUtil.randomInt(1, 65536);
+        if (Objects.nonNull(channel)) {
+            ByteBuf byteBuf = frameEncoder.encodeCommand41(serialNo, channelExecutor.getHeaderMessage(detectAddr), params);
+            if (Objects.nonNull(byteBuf)) {
+                channel.writeAndFlush(byteBuf);
+
+                String serialNoHex = CommonUtil.serialNoHex(serialNo);
+                String frameHexStr = ByteBufUtil.hexDump(byteBuf);
+
+                String reqCode = CommonUtil.createReqCode(detectAddr, "41", serialNo);
+
+                return EncodeMessage.builder()
+                        .serialNoHex(serialNoHex)
+                        .serialNo(serialNo)
+                        .detectAddress(detectAddr)
+                        .frameHex(frameHexStr)
+                        .reqCode(reqCode)
+                        .build();
+            }
+        }
+        return null;
+    }
+
+    @Override
+    public EncodeMessage op40(String detectAddr, List<JSONObject> params) {
+        ChannelExecutor channelExecutor = ChannelExecutorFactory.loadInstance().getExecutor(ChannelTypeEnum.detect);
+        Channel channel = channelExecutor.getChannel(detectAddr);
+        // 生成随机流水号（1-65535）
+        int serialNo = RandomUtil.randomInt(1, 65536);
+        if (Objects.nonNull(channel)) {
+            ByteBuf byteBuf = frameEncoder.encodeCommand40(serialNo, channelExecutor.getHeaderMessage(detectAddr), params);
+            if (Objects.nonNull(byteBuf)) {
+                channel.writeAndFlush(byteBuf);
+
+                String serialNoHex = CommonUtil.serialNoHex(serialNo);
+                String frameHexStr = ByteBufUtil.hexDump(byteBuf);
+
+                String reqCode = CommonUtil.createReqCode(detectAddr, "40", serialNo);
+
+                return EncodeMessage.builder()
+                        .serialNoHex(serialNoHex)
+                        .serialNo(serialNo)
+                        .detectAddress(detectAddr)
+                        .frameHex(frameHexStr)
+                        .reqCode(reqCode)
+                        .build();
+            }
+        }
+        return null;
+    }
+
+    @Override
+    public EncodeMessage op42(String detectAddr, List<JSONObject> params) {
+        ChannelExecutor channelExecutor = ChannelExecutorFactory.loadInstance().getExecutor(ChannelTypeEnum.detect);
+        Channel channel = channelExecutor.getChannel(detectAddr);
+        // 生成随机流水号（1-65535）
+        int serialNo = RandomUtil.randomInt(1, 65536);
+        if (Objects.nonNull(channel)) {
+            ByteBuf byteBuf = frameEncoder.encodeCommand42(serialNo, channelExecutor.getHeaderMessage(detectAddr), params);
+            if (Objects.nonNull(byteBuf)) {
+                channel.writeAndFlush(byteBuf);
+
+                String serialNoHex = CommonUtil.serialNoHex(serialNo);
+                String frameHexStr = ByteBufUtil.hexDump(byteBuf);
+
+                String reqCode = CommonUtil.createReqCode(detectAddr, "42", serialNo);
+
+                return EncodeMessage.builder()
+                        .serialNoHex(serialNoHex)
+                        .serialNo(serialNo)
+                        .detectAddress(detectAddr)
+                        .frameHex(frameHexStr)
+                        .reqCode(reqCode)
+                        .build();
+            }
+        }
+        return null;
+    }
+
+    @Override
+    public EncodeMessage op43(String detectAddr, List<JSONObject> params) {
+        ChannelExecutor channelExecutor = ChannelExecutorFactory.loadInstance().getExecutor(ChannelTypeEnum.detect);
+        Channel channel = channelExecutor.getChannel(detectAddr);
+        // 生成随机流水号（1-65535）
+        int serialNo = RandomUtil.randomInt(1, 65536);
+        if (Objects.nonNull(channel)) {
+            ByteBuf byteBuf = frameEncoder.encodeCommand43(serialNo, channelExecutor.getHeaderMessage(detectAddr), params);
+            if (Objects.nonNull(byteBuf)) {
+                channel.writeAndFlush(byteBuf);
+
+                String serialNoHex = CommonUtil.serialNoHex(serialNo);
+                String frameHexStr = ByteBufUtil.hexDump(byteBuf);
+
+                String reqCode = CommonUtil.createReqCode(detectAddr, "43", serialNo);
+
+                return EncodeMessage.builder()
+                        .serialNoHex(serialNoHex)
+                        .serialNo(serialNo)
+                        .detectAddress(detectAddr)
+                        .frameHex(frameHexStr)
+                        .reqCode(reqCode)
+                        .build();
+            }
+        }
+        return null;
+    }
+
+    @Override
+    public EncodeMessage op45(String detectAddr) {
+        ChannelExecutor channelExecutor = ChannelExecutorFactory.loadInstance().getExecutor(ChannelTypeEnum.detect);
+        Channel channel = channelExecutor.getChannel(detectAddr);
+        // 生成随机流水号（1-65535）
+        int serialNo = RandomUtil.randomInt(1, 65536);
+        if (Objects.nonNull(channel)) {
+
+
+            ByteBuf byteBuf = frameEncoder.encodeAsk45(serialNo, channelExecutor.getHeaderMessage(detectAddr));
+
+            if (Objects.nonNull(byteBuf)) {
+
+                channel.writeAndFlush(byteBuf);
+
+                String serialNoHex = CommonUtil.serialNoHex(serialNo);
+                String frameHexStr = ByteBufUtil.hexDump(byteBuf);
+
+                String reqCode = CommonUtil.createReqCode(detectAddr, "45", serialNo);
+
+                return EncodeMessage.builder()
+                        .serialNoHex(serialNoHex)
+                        .serialNo(serialNo)
+                        .detectAddress(detectAddr)
+                        .frameHex(frameHexStr)
+                        .reqCode(reqCode)
+                        .build();
+            }
+        }
+        return null;
+    }
 
 
 }

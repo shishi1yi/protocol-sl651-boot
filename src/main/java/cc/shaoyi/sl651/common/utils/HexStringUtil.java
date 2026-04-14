@@ -1,14 +1,19 @@
 package cc.shaoyi.sl651.common.utils;
 
 import io.netty.buffer.ByteBuf;
+import org.apache.commons.codec.binary.Hex;
 
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 
-
+/**
+ * @author weijiayu
+ * @date 2022/5/12 22:57
+ */
 public class HexStringUtil {
 
     private static final char[] HEX_CHAR =
-            {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'};
+        {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'};
 
     // "7e7e" => [7e,7e]
     public static char[] hexStr2CharArray(String hexStr) {
@@ -39,19 +44,38 @@ public class HexStringUtil {
         return str;
     }
 
-    // 16进制字符串转UTF-8的字符传
-    public static String hexToUtf8(String hexString) {
-        if (hexString == null || hexString.length() % 2 != 0) {
-            throw new IllegalArgumentException("非法的字符串：" +  hexString);
-        }
 
-        byte[] bytes = new byte[hexString.length() / 2];
-        for (int i = 0; i < bytes.length; i++) {
-            bytes[i] = (byte) Integer.parseInt(hexString.substring(i * 2, i * 2 + 2), 16);
-        }
+	/**
+	 * 通用的 16 进制字符串转字符串方法
+	 * @param hexString 16进制字符串
+	 * @param charset   目标字符集 (如 StandardCharsets.UTF_8 或 Charset.forName("GBK"))
+	 */
+	public static String hexToStr(String hexString, Charset charset) {
+		if (hexString == null || hexString.length() % 2 != 0) {
+			throw new IllegalArgumentException("非法的字符串：" +  hexString);
+		}
 
-        return new String(bytes, StandardCharsets.UTF_8);
-    }
+		byte[] bytes = new byte[hexString.length() / 2];
+		for (int i = 0; i < bytes.length; i++) {
+			bytes[i] = (byte) Integer.parseInt(hexString.substring(i * 2, i * 2 + 2), 16);
+		}
+
+		return new String(bytes, charset);
+	}
+
+	/**
+	 * 16进制字符串转 UTF-8字符串方法
+	 */
+	public static String hexToUtf8(String hexString) {
+		return hexToStr(hexString, StandardCharsets.UTF_8);
+	}
+
+	/**
+	 * 16进制字符串转 GBK字符串方法，非常适合老旧硬件协议
+	 */
+	public static String hexToGbk(String hexString) {
+		return hexToStr(hexString, Charset.forName("GBK"));
+	}
 
     public static String bytes2HexStr(byte[] bytes) {
         char[] buf = new char[bytes.length * 2];
@@ -87,4 +111,3 @@ public class HexStringUtil {
         return str;
     }
 }
-

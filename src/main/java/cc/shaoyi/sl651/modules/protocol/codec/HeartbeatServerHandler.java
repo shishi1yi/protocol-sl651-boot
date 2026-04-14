@@ -32,12 +32,19 @@ public class HeartbeatServerHandler extends SimpleChannelInboundHandler<String> 
 	@Override
 	public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
 		IdleStateEvent event = (IdleStateEvent) evt;
-		String eventDesc = switch (event.state()) {
-            case READER_IDLE -> "读空闲";
-            case WRITER_IDLE -> "写空闲";
-            case ALL_IDLE -> "读写空闲";
-        };
-        log.info("[心跳检测]{}发生超时事件--{}", ctx.channel().remoteAddress(), eventDesc);
+		String eventDesc = null;
+		switch (event.state()) {
+			case READER_IDLE:
+				eventDesc = "读空闲";
+				break;
+			case WRITER_IDLE:
+				eventDesc = "写空闲";
+				break;
+			case ALL_IDLE:
+				eventDesc = "读写空闲";
+				break;
+		}
+		log.info("[心跳检测]{}发生超时事件--{}", ctx.channel().remoteAddress(), eventDesc);
 		times++;
 		if (times >= 3) {
 			log.info("[心跳检测]{}空闲次数已经达三次, 关闭连接", ctx.channel().remoteAddress());

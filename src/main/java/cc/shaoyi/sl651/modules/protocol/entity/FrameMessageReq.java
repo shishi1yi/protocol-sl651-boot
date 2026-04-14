@@ -5,7 +5,6 @@ import lombok.Data;
 import lombok.Getter;
 import lombok.experimental.Accessors;
 
-import java.io.Serial;
 import java.io.Serializable;
 
 /**
@@ -37,6 +36,5 @@ public class FrameMessageReq implements Serializable {
 
 
 
-	@Serial
 	private static final long serialVersionUID = 7603877700078585188L;
 }
